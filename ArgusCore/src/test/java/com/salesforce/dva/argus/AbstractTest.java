@@ -260,6 +260,30 @@ public abstract class AbstractTest {
         system = SystemMain.getInstance(config);
         system.start();
         return system;
-    } 
+    }
+
+    public static SystemMain newInstance(Properties props) {
+        Properties config = new Properties();
+        InputStream is = null;
+
+        try {
+            is = AbstractTest.class.getResourceAsStream("/argus.properties");
+            config.load(is);
+            config.putAll(props);
+        } catch (IOException ex) {
+            throw new SystemException(ex);
+        } finally {
+            if (is != null) {
+                try {
+                    is.close();
+                } catch (IOException ex) {
+                    assert false : "This should never occur.";
+                }
+            }
+        }
+        SystemMain system = SystemMain.getInstance(config);
+        system.start();
+        return system;
+    }
 }
 /* Copyright (c) 2016, Salesforce.com, Inc.  All rights reserved. */

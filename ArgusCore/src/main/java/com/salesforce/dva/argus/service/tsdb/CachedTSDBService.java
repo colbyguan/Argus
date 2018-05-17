@@ -99,7 +99,7 @@ public class CachedTSDBService extends DefaultService implements TSDBService {
      *
      */
     @Inject
-    private CachedTSDBService(SystemConfiguration config, MonitorService monitorService,
+    CachedTSDBService(SystemConfiguration config, MonitorService monitorService,
     		CacheService cacheService, @NamedBinding TSDBService tsdbService) {
     	super(config);
         requireArgument(tsdbService != null, "TSDBService cannot be null.");

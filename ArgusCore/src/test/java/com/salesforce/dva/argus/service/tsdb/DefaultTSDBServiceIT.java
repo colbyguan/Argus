@@ -29,17 +29,14 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
      
-package com.salesforce.dva.argus.service;
+package com.salesforce.dva.argus.service.tsdb;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.salesforce.dva.argus.AbstractTest;
 import com.salesforce.dva.argus.IntegrationTest;
 import com.salesforce.dva.argus.entity.Annotation;
 import com.salesforce.dva.argus.entity.Metric;
-import com.salesforce.dva.argus.service.metric.transform.TransformFactory;
-import com.salesforce.dva.argus.service.tsdb.AnnotationQuery;
-import com.salesforce.dva.argus.service.tsdb.DefaultTSDBService;
-import com.salesforce.dva.argus.service.tsdb.MetricQuery;
+import com.salesforce.dva.argus.service.TSDBService;
 import com.salesforce.dva.argus.system.SystemException;
 
 import org.junit.Assert;
@@ -48,22 +45,26 @@ import org.junit.experimental.categories.Category;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
+import java.util.*;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 @Category(IntegrationTest.class)
-public class TSDBServiceIT extends AbstractTest {
-
+public class DefaultTSDBServiceIT extends AbstractTest {
     private static final long SLEEP_AFTER_PUT_IN_MILLIS = 2000;
+    protected TSDBService service;
+
+    @Override
+    public void setUp() {
+        super.setUp();
+        Properties props = new Properties();
+        props.put("service.binding.tsdb", "com.salesforce.dva.argus.service.tsdb.DefaultTSDBService");
+        props.put("service.property.tsdb.endpoint.read", "http://shared1-argustsdbr2-0-prd.data.sfdc.net:4466");
+        props.put("service.property.tsdb.endpoint.write", "http://shared1-argustsdbw1-0-prd.data.sfdc.net:4477");
+        system = getInstance(props);
+        service = new DefaultTSDBService(system.getConfiguration(), system.getServiceFactory().getMonitorService());
+    }
 
     protected static MetricQuery toQuery(Metric metric) {
         TreeMap<Long, Double> datapoints = new TreeMap<>(metric.getDatapoints());
@@ -78,10 +79,10 @@ public class TSDBServiceIT extends AbstractTest {
 
         scope = scope == null ? createRandomName() : scope;
 
-        long start = System.currentTimeMillis() - 60000;
+        long start = System.currentTimeMillis();
 
         for (int i = 0; i < count; i++) {
-            long timestamp = start - (i * 60000L);
+            long timestamp = start - (i * 1000L);
             String metricName = metric == null ? createRandomName() : metric;
             Annotation annotation = new Annotation("splunk", String.valueOf(i), "erelease", scope, metricName, timestamp);
             Map<String, String> fields = new HashMap<>();
@@ -94,7 +95,7 @@ public class TSDBServiceIT extends AbstractTest {
         return result;
     }
 
-    private List<Metric> _coalesceMetrics(Map<MetricQuery, List<Metric>> metricsMap) {
+    protected List<Metric> _coalesceMetrics(Map<MetricQuery, List<Metric>> metricsMap) {
         List<Metric> metrics = new ArrayList<Metric>();
 
         for (List<Metric> list : metricsMap.values()) {
@@ -105,7 +106,6 @@ public class TSDBServiceIT extends AbstractTest {
 
     @Test
     public void testPutAndGetMetrics() throws InterruptedException {
-        TSDBService service = system.getServiceFactory().getTSDBService();
         List<Metric> expected = createRandomMetrics(null, null, 10);
 
         try {
@@ -130,8 +130,6 @@ public class TSDBServiceIT extends AbstractTest {
     
     @Test
     public void testGetMetricsTagValueTooLarge() throws InterruptedException {
-    	
-    	TSDBService service = system.getServiceFactory().getTSDBService();
         List<Metric> expected = createMetricWithMultipleTags("tagKey", 100);
 
         try {
@@ -207,7 +205,6 @@ public class TSDBServiceIT extends AbstractTest {
         String scope = createRandomName();
         String metric = "app_record.count";
         String[] recordTypes = { "A", "U", "V", "R" };
-        TSDBService service = system.getServiceFactory().getTSDBService();
 
         try {
             List<Metric> expected = createRandomMetrics(scope, metric, recordTypes.length);
@@ -250,7 +247,6 @@ public class TSDBServiceIT extends AbstractTest {
 
     @Test
     public void testPutAndGetAnnotations() throws InterruptedException {
-        TSDBService service = system.getServiceFactory().getTSDBService();
         List<Annotation> expected = createRandomAnnotations(null, null, 10);
 
         try {
@@ -278,7 +274,6 @@ public class TSDBServiceIT extends AbstractTest {
 
     @Test
     public void testMultipleAnnotationsAtSingleTimestamp() throws InterruptedException {
-        TSDBService service = system.getServiceFactory().getTSDBService();
         List<Annotation> expected = new LinkedList<>();
         String source = "splunk";
         String type = "erelease";
@@ -318,7 +313,6 @@ public class TSDBServiceIT extends AbstractTest {
 
     @Test
     public void testPutAndGetScopeAnnotations() throws InterruptedException {
-        TSDBService service = system.getServiceFactory().getTSDBService();
         List<Annotation> expected = new LinkedList<>();
         String source = "splunk";
         String type = "erelease";
@@ -359,7 +353,6 @@ public class TSDBServiceIT extends AbstractTest {
     @SuppressWarnings("unchecked")
     @Test
     public void testFractureMetrics() {
-        TSDBService service = system.getServiceFactory().getTSDBService();
         Metric metric = new Metric("testscope", "testMetric");
         Map<Long, Double> datapoints = new HashMap<>();
 
@@ -368,7 +361,7 @@ public class TSDBServiceIT extends AbstractTest {
         }
         metric.setDatapoints(datapoints);
         try {
-            Method method = DefaultTSDBService.class.getDeclaredMethod("fractureMetric", Metric.class);
+            Method method = AbstractTSDBService.class.getDeclaredMethod("fractureMetric", Metric.class);
 
             method.setAccessible(true);
 
@@ -379,7 +372,7 @@ public class TSDBServiceIT extends AbstractTest {
             assertEquals(100, metricList.get(1).getDatapoints().size());
             assertEquals(1, metricList.get(2).getDatapoints().size());
         } catch (NoSuchMethodException | IllegalAccessException | IllegalArgumentException | InvocationTargetException ex) {
-            throw new SystemException("Failed to construct fracture metric method using reflection");
+            throw new SystemException("Failed to construct fracture metric method using reflection", ex);
         }
     }
 
@@ -388,7 +381,7 @@ public class TSDBServiceIT extends AbstractTest {
         String metric = annotation.getMetric();
         Map<String, String> tags = annotation.getTags();
         String type = annotation.getType();
-        Long timestamp = annotation.getTimestamp();
+        Long timestamp = annotation.getTimestamp() - 60000L;
 
         return new AnnotationQuery(scope, metric, tags, type, timestamp, null);
     }
@@ -403,9 +396,6 @@ public class TSDBServiceIT extends AbstractTest {
     
     @Test
     public void testPut_DatapointsContainNullValues() {
-    	
-    	TSDBService service = system.getServiceFactory().getTSDBService();
-    	
     	Map<Long, Double> datapoints = new HashMap<>();
     	datapoints.put(1493973552000L, 100D);
     	datapoints.put(1493973652000L, null);
